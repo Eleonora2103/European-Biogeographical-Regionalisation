@@ -24,7 +24,7 @@ biogeo_habitat <- readOGR("BiogeoRegions_selezione.shp")
 biogeo_habitat.df <- as(biogeo_habitat, "data.frame")
 
 # Sostituisco valori della tabella in 'pa'
-presence_absence <- decostand(biogeo_habitat.df[,9:ncol(biogeo_habitat.df)], "pa")
+presence_absence <- decostand(biogeo_habitat.df[,9:ncol(biogeo_habitat.df)], "pa") 
 # Sono quasi tutti con valore 0 (probabilmente perchè ho selezionato una regione piccola?) 
 
 # Habitat richness
