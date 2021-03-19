@@ -17,21 +17,23 @@ habitat <- readOGR("europe_habitats.shp")
 EBR <- readOGR('BiogeoRegions2016.shp')
 
 # Importo lo shapefile filtrato
-# Ho creato un nuovo .shp file tramite QGis selezionando alcuni quadranti ed ho filtrato il layer 'Alpine' dal file 'Regioni Biogeografiche'
-biogeo_habitat <- readOGR("BiogeoRegions_selezione.shp")
+# Ho creato un nuovo .shp file tramite QGis selezionando alcuni quadrati
+biogeo_habitat <- readOGR("Selezione.shp")
+biogeo_habitat
+summary(biogeo_habitat)
+str(biogeo_habitat)
 
 # Converto lo .shp file in dataframe
-biogeo_habitat.df <- as(biogeo_habitat, "data.frame")
+df <- as.data.frame(biogeo_habitat)
+names(df)
 
-# Sostituisco valori della tabella in 'pa'
-presence_absence <- decostand(biogeo_habitat.df[,9:ncol(biogeo_habitat.df)], "pa") 
-# Sono quasi tutti con valore 0 (probabilmente perchè ho selezionato una regione piccola?) 
+# Sostituisco valori della tabella in 'presence/absence'
+presence_absence <- decostand(df[,4:ncol(df)], "pa")
+is.na(biogeo_habitat)
 
 # Habitat richness
-sum <- rowSums(presence_absence)
+habitat_richness <- rowSums(presence_absence)
 
 # Aggiungo la colonna 'habitat_richness' al dataframe 
-df <- cbind(biogeo_habitat.df, habitat_richness)
-str(df)
-head(df)
-
+add <- cbind(df, habitat_richness)
+names(add)
