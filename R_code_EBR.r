@@ -5,6 +5,10 @@
 # Working directory
 setwd("C:/R/")
 
+install.packages("rgdal")
+install.packages("vegan")
+install.packages("sf")
+
 # Libraries
 library(rgdal)
 library(vegan)
@@ -25,7 +29,9 @@ str(biogeo_habitat)
 
 # Converto lo .shp file in dataframe
 df <- as.data.frame(biogeo_habitat)
+head(df)
 names(df)
+str(df)
 
 # Sostituisco valori della tabella in 'presence/absence'
 presence_absence <- decostand(df[,4:ncol(df)], "pa")
@@ -35,47 +41,42 @@ is.na(biogeo_habitat)
 habitat_richness <- rowSums(presence_absence)
 
 # Aggiungo la colonna 'habitat_richness' al dataframe 
-add <- cbind(df, habitat_richness)
-names(add)
+df <- cbind(df, habitat_richness)
+names(df)
 
 #####################################################################
 
 # Calcolo la distanza dal margine più vicino
-# Utilizzo lo Shapefile filtrato (Selezione.shp) e quello delle regioni Biogeografiche (BiogeoRegions2016.shp)
 
-# transformo file 'sf' 
+# Utilizzo lo Shapefile filtrato (Selezione.shp) e quello delle regioni Biogeografiche (BiogeoRegions2016.shp)
 sf <- st_as_sf(biogeo_region)
 sf_habitat <- st_as_sf(biogeo_habitat)
 sf_habitat
 
-# estraggo solo i punti all'interno del limite della regione selezionata
-grid <- st_intersection(sf, sf_habitat)   
-plot(grid, max.plot = 1)
-
-# trasformo il layer habitat da poligono a linea
+# trasformo il layer del confine biogeografico da poligono a linea
 border <- st_cast(sf, "MULTILINESTRING")
 class(border)
 
 # calcolo la distanza tra il confine ed i punti della griglia selezionata
-dist <- st_distance(border, grid)
+dist_1 <- st_distance(sf_habitat, border)
+str(dist_1)
 
-# distanza calcolata in metri
-head(dist)
-# Units: [m]
-# [1]   75991.24 1787175.29 2654651.43  514593.71 1454667.45 1351966.73
+# creo il dataframe della distanza
+dist.df <- as.data.frame(dist_1)
+dim(dist.df)
 
-# creo un dataframe con la distanza e le coordinate dei punti
-df <- data.frame(dist = as.vector(dist)/1000,
-                 st_coordinates(border))
-# Error in data.frame(dist = as.vector(dist)/1000, st_coordinates(border)) : 
-# arguments imply differing number of rows: 7428, 3021658
+# calcolare la distanza minima dal confine per ogni cella
+min_dist <- apply(dist.df, 1, FUN=min)
+str(min_dist)
 
-# color
-col_dist <- brewer.pal(11, "RdGy")
+head(min_dist)
+# [1]    0.000    0.000    0.000    0.000    0.000 3617.966
 
-ggplot(df, aes(x=dist, y=nrow(dist), fill = dist))+ #variables
-  geom_tile()+ #geometry
-  scale_fill_gradientn(colours = rev(col_dist))+ #colors for plotting the distance
-  labs(fill = "Distance (km)")+ #legend name
-  theme_void()+ #map theme
-  theme(legend.position = "bottom") #legend position
+# aggiungo la distanza dal confine più vicino al dataframe 'df'
+df <- cbind(df, min_dist)
+names(df)
+head(df)
+# Grafico distanza-habitat richness
+
+plot(df$min_dist, df$habitat_richness)
+summary(lm(df$habitat_richness ~ df$min_dist))
