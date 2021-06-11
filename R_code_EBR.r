@@ -28,41 +28,37 @@ summary(biogeo_habitat)
 str(biogeo_habitat)
 
 # Converto lo .shp file in dataframe
-df <- as.data.frame(biogeo_habitat)
-head(df)
-names(df)
-str(df)
+habitat_df <- as.data.frame(biogeo_habitat)
+head(habitat_df)
+names(habitat_df)
+str(habitat_df)
 
 # Sostituisco valori della tabella in 'presence/absence'
-presence_absence <- decostand(df[,4:ncol(df)], "pa")
-is.na(biogeo_habitat)
+presence_absence <- decostand(habitat_df[,4:ncol(habitat_df)], "pa")
 
 # Habitat richness
 habitat_richness <- rowSums(presence_absence)
 
-# Aggiungo la colonna 'habitat_richness' al dataframe 
-df <- cbind(df, habitat_richness)
-names(df)
 
 #####################################################################
 
 # Calcolo la distanza dal margine più vicino
 
 # Utilizzo lo Shapefile filtrato (Selezione.shp) e quello delle regioni Biogeografiche (BiogeoRegions2016.shp)
-sf <- st_as_sf(biogeo_region)
+sf_region <- st_as_sf(biogeo_region)
 sf_habitat <- st_as_sf(biogeo_habitat)
 sf_habitat
 
 # trasformo il layer del confine biogeografico da poligono a linea
-border <- st_cast(sf, "MULTILINESTRING")
+border <- st_cast(sf_region, "MULTILINESTRING")
 class(border)
 
 # calcolo la distanza tra il confine ed i punti della griglia selezionata
-dist_1 <- st_distance(sf_habitat, border)
-str(dist_1)
+dist <- st_distance(sf_habitat, border)
+str(dist)
 
 # creo il dataframe della distanza
-dist.df <- as.data.frame(dist_1)
+dist.df <- as.data.frame(dist)
 dim(dist.df)
 
 # calcolare la distanza minima dal confine per ogni cella
@@ -72,11 +68,17 @@ str(min_dist)
 head(min_dist)
 # [1]    0.000    0.000    0.000    0.000    0.000 3617.966
 
-# aggiungo la distanza dal confine più vicino al dataframe 'df'
-df <- cbind(df, min_dist)
-names(df)
-head(df)
-# Grafico distanza-habitat richness
+# Aggiungo la colonna 'habitat_richness' al dataframe 
+habitat_df <- cbind(habitat_df, habitat_richness)
+names(habitat_df)
 
-plot(df$min_dist, df$habitat_richness)
-summary(lm(df$habitat_richness ~ df$min_dist))
+# aggiungo la distanza dal confine più vicino al dataframe 'habitat_df'
+habitat_df <- cbind(habitat_df, min_dist)
+names(habitat_df)
+head(df)
+
+# Grafico distanza/habitat richness
+library(mgcv)
+plot(habitat_df$min_dist, habitat_df$habitat_richness)
+summary(mgcv::gam(habitat_df$habitat_richness ~ s(habitati_df$min_dist)))
+
