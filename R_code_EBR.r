@@ -75,7 +75,7 @@ names(habitat_df)
 # aggiungo la distanza dal confine più vicino al dataframe 'habitat_df'
 habitat_df <- cbind(habitat_df, min_dist)
 names(habitat_df)
-head(df)
+head(habitat_df)
 
 # Grafico distanza/habitat richness
 library(mgcv)
