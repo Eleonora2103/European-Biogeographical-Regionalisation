@@ -15,8 +15,9 @@ install.packages("modEvA")
 install.packages("mgcv")
 install.packages("glmmsr")
 install.packages("lme4")
-install.packages('Rcpp')
-update.packages("Rcpp")
+install.packages("ggplot2")
+install.packages("gridExtra")
+install.packages("stargazer")
 
 # Libraries
 library(rgdal)
@@ -29,8 +30,9 @@ library(modEvA)
 library(mgcv)
 library(glmmsr)
 library(lme4)
-library(Rcpp)
-
+library(ggplot2)
+library(gridExtra)
+library(stargazer)
 
 ## Importo immagine Europe_habitat
 habitat <- readOGR("europe_habitats.shp")
@@ -98,7 +100,6 @@ head(habitat_df)
 # Grafico distanza/habitat richness
 library(mgcv)
 plot(habitat_df$min_dist, habitat_df$habitat_richness)
-summary(mgcv::gam(habitat_df$habitat_richness ~ s(habitati_df$min_dist)))
 
 #################################################################
 
@@ -106,6 +107,7 @@ summary(mgcv::gam(habitat_df$habitat_richness ~ s(habitati_df$min_dist)))
 hr_bioreg_dist <- readOGR("hr_bioreg_dist.shp")
 summary(hr_bioreg_dist)
 str(hr_bioreg_dist)
+summary(hr_bioreg_dist$bioreg)
 
 # Converto a dataframe
 hr_bioreg_dist.df <- as.data.frame(hr_bioreg_dist)
@@ -114,6 +116,9 @@ str(hr_bioreg_dist.df)
 
 #Conversione da metri a kilometri 
 hr_bioreg_dist.df$min_dst <- hr_bioreg_dist.df$min_dst/1000
+
+saveRDS(hr_bioreg_dist.df, file = "data.Rds")
+load("data.Rda")
 
 ##########################################
 for(i in 1:49600){
@@ -129,6 +134,8 @@ abline(lm,lwd = 3,  col= "red")
 lm.total <- lm(hbtt_rc ~ (min_dst), data = hr_bioreg_dist.df)
 summary(lm.total)
 
+range(lm.total$min_dst)
+
 ## Polynomial regression
 polynomial <- lm(hbtt_rc ~ min_dst + I(min_dst^2), data = hr_bioreg_dist.df)
 summary(polynomial)
@@ -136,50 +143,78 @@ summary(polynomial)
 plot(hr_bioreg_dist.df$min_dst, hr_bioreg_dist.df$hbtt_rc)
 
 #GLM
-poisson.total <- glm(hbtt_rc ~ min_dst, family = poisson(link = "log"), data = hr_bioreg_dist.df)
+poisson.total <- glm(hbtt_rc ~ min_dst, family = poisson(), data = hr_bioreg_dist.df)
 summary(poisson.total)
+total.dataframe <- as.data.frame(poisson.total)
 
 Dsquared(poisson.total)
 
-# [1] 0.07851531
+#
+(plot.glm.total <- ggplot(hr_bioreg_dist.df, aes(x = min_dst, y = hbtt_rc, color = "red")) + 
+  geom_point() +
+    geom_smooth(method="glm") +
+  geom_line(data= cbind(hr_bioreg_dist.df, pred = predict(poisson.total)), aes(y=pred), size = 1, color="black"))
+
+#
+range(poisson.total$coefficents$, na.rm = TRUE)
+xweight <- seq(-Inf, Inf)
+yweight <- predict(poisson.total, list(min_dst = xweight), type = "response")
+plot(poisson.total$min_dst, poisson.total$hbtt_rc, xlab = "Minimun distance", ylab= "Habitat Richness")
+lines(xweight, yweight)
+
+#
+ggplot2::ggplot(data = poisson.total, aes(x = min_dst, y = hbtt_rc)) +
+  geom_point() +
+  geom_smooth(method = 'glm', method.args = list(family = 'poisson'))
+
+ggplot2::ggplot(data = poisson.total, aes(x = min_dst, y = hbtt_rc)) + 
+  geom_point()
 
 # GAM
 gam.total <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = hr_bioreg_dist.df, family = poisson())
 summary(gam.total)
 plot(gam.total)
 
+summary(mgcv::gam(hr_bioreg_dist.df$hbtt_rc ~ s(hr_bioreg_dist.df$min_dst)))
+
 #GLMM
 # habitat_richness ~ distanza_dal_margine + (1|bioreg)
-glmm <- glmm(hbtt_rc ~ min_dst + (1|bioreg), data = hr_bioreg_dist.df, family = binomial, method = "Laplace")
-
-glmm <- glmer
+glmm.total <- lme4::glmer(hbtt_rc ~ min_dst + (1|bioreg), data = hr_bioreg_dist.df)
 
 # LMM
-lmm.total <- lmer(hbtt_rc ~ min_dst + (1|bioreg), data = hr_bioreg_dist.df, family = gaussian)
 lmm.total <- lme4::lmer(hbtt_rc ~ min_dst + (1|bioreg), data = hr_bioreg_dist.df)
 
 ########### 'Alpine'
 
 alpine <- filter(hr_bioreg_dist.df, bioreg == 'Alpine')
 alpine$min_dst <- alpine$min_dst/1000
+alpine.df <- as.data.frame(alpine)
 
+# LM
 lm_alpine <- lm(hbtt_rc ~ min_dst, data = alpine)
 summary(lm_alpine)
-lm_alpine$coefficients
 
 # Polynomial regression
 polynomial.alpine <- lm(hbtt_rc ~ min_dst + I(min_dst^2), data = alpine)
 summary(polynomial.alpine)
 
 # Calcolo GLM Poisson
-poisson.alpine <- glm(hbtt_rc ~ min_dst, family = poisson(link = "log"), data = alpine)
+poisson.alpine <- glm(hbtt_rc ~ min_dst, family = poisson(), data = alpine)
 summary(poisson.alpine)
 
 Dsquared(poisson.alpine)
 
+(plot.glm.total <- ggplot(alpine, aes(x = min_dst, y = hbtt_rc, color = "green")) + 
+    geom_point(alpha = 0.5) + 
+    xlim(0,300) +
+    geom_line(data= cbind(alpine, pred = predict(poisson.alpine)), aes(y=pred), size = 1, color="black") +
+    labs(x = "Minimum Distance (Km)", y = "Habitat Richness",
+         title = "Alpine"))
+
 # GAM
-gam.alpine <- gam(hbtt_rc ~ s(min_dst),  data = alpine), family = poisson())
+gam.alpine <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = alpine, family = poisson())
 summary(gam.alpine)
+plot(gam.alpine)
 
 # GLMM
 glmm_alpine <- glmm(hbtt_rc ~ min_dst + (1|bioreg), data = alpine, family = binomial, method = "Laplace")
@@ -189,6 +224,7 @@ glmm_alpine <- glmm(hbtt_rc ~ min_dst + (1|bioreg), data = alpine, family = bino
 atlantic <- filter(hr_bioreg_dist.df, bioreg == 'Atlantic')
 atlantic$min_dst <- atlantic$min_dst/1000
 
+# LM
 lm_atlantic <- lm(hbtt_rc ~ min_dst, data = atlantic)
 summary(lm_atlantic)
 
@@ -199,21 +235,25 @@ polynomial.atlantic <- lm(hbtt_rc ~ min_dst + I(min_dst^2), data = atlantic)
 summary(polynomial.atlantic)
 
 # Calcolo GLM Poisson
-poisson.atlantic <- glm(hbtt_rc ~ min_dst, family = poisson(link = "log"), data = atlantic)
+poisson.atlantic <- glm(hbtt_rc ~ min_dst, family = poisson(), data = atlantic)
 summary(poisson.atlantic)
 plot(poisson.atlantic)
 
 Dsquared(poisson.atlantic)
 
 # GAM
-gam.atlantic <- gam(hbtt_rc ~ s(min_dst),  data = atlantic, family = poisson())
+gam.atlantic <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = atlantic, family = poisson())
 summary(gam.atlantic)
+
+plot(gam.atlantic)
 
 ########### 'Black Sea'
 
 black_sea <- filter(hr_bioreg_dist.df, bioreg == 'Black Sea')
 black_sea$min_dst <- black_sea$min_dst/1000
+black_sea.df <- as.data.frame(black_sea)
 
+# LM
 lm_black_sea <- lm(hbtt_rc ~ min_dst, data = black_sea)
 summary(lm_black_sea)
 
@@ -224,21 +264,29 @@ polynomial.black_sea <- lm(hbtt_rc ~ min_dst + I(min_dst^2), data = black_sea)
 summary(polynomial.black_sea)
 
 # Calcolo GLM Poisson
-poisson.black_sea <- glm(hbtt_rc ~ min_dst, family = poisson(link = "log"), data = black_sea)
+poisson.black_sea <- glm(hbtt_rc ~ min_dst, family = poisson(), data = black_sea)
 summary(poisson.black_sea)
 plot(poisson.black_sea)
 
 Dsquared(poisson.black_sea)
 
+(plot.glm.blacksea <- ggplot(black_sea, aes(x = min_dst, y = hbtt_rc, color = "yellow")) + 
+    geom_point(alpha = 0.5) + 
+    xlim(0,350) +
+    geom_line(data= cbind(black_sea, pred = predict(poisson.black_sea)), aes(y=pred), size = 1, color="black") +
+    labs(x = "Minimum Distance (Km)", y = "Habitat Richness",
+         title = "Black Sea"))
+
 # GAM
-gam.black_sea <- gam(hbtt_rc ~ s(min_dst),  data = black_sea, family = poisson())
+gam.black_sea <- gam(hbtt_rc ~ s(min_dst, k = 3),  data = black_sea, family = poisson())
 summary(gam.black_sea)
+plot(gam.black_sea)
 
 ########## 'Boreal'
-
 boreal <- filter(hr_bioreg_dist.df, bioreg == 'Boreal')
 boreal$min_dst <- boreal$min_dst/1000
 
+# LM
 lm_boreal <- lm(hbtt_rc ~ min_dst, data = boreal)
 summary(lm_boreal)
 
@@ -249,21 +297,22 @@ polynomial.boreal <- lm(hbtt_rc ~ min_dst + I(min_dst^2), data = boreal)
 summary(polynomial.boreal)
 
 # Calcolo GLM Poisson
-poisson.boreal <- glm(hbtt_rc ~ min_dst, family = poisson(link = "log"), data = boreal)
+poisson.boreal <- glm(hbtt_rc ~ min_dst, family = poisson(), data = boreal)
 summary(poisson.boreal)
 plot(poisson.boreal)
 
 Dsquared(poisson.boreal)
 
 # GAM
-gam.boreal <- gam(hbtt_rc ~ s(min_dst),  data = boreal, family = poisson())
+gam.boreal <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = boreal, family = poisson())
 summary(gam.boreal)
+plot(gam.boreal)
 
 ##########  'Continental'
-
 continental <- filter(hr_bioreg_dist.df, bioreg == 'Continental')
 continental$min_dst <- continental$min_dst/1000
 
+# LM
 lm_continental <- lm(hbtt_rc ~ min_dst, data = continental)
 summary(lm_continental)
 
@@ -274,20 +323,22 @@ polynomial.continental <- lm(hbtt_rc ~ min_dst + I(min_dst^2), data = continenta
 summary(polynomial.continental)
 
 # Calcolo GLM Poisson
-poisson.continental <- glm(hbtt_rc ~ min_dst, family = poisson(link = "log"), data = continental)
+poisson.continental <- glm(hbtt_rc ~ min_dst, family = poisson(), data = continental)
 summary(poisson.continental)
 plot(poisson.continental)
 
 Dsquared(poisson.continental)
 
 # GAM
-gam.continental <- gam(hbtt_rc ~ s(min_dst),  data = continental, family = poisson())
+gam.continental <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = continental, family = poisson())
 summary(gam.continental)
+plot(gam.continental)
 
 ########## Importo 'Macaronesian'
 macaronesian <- filter(hr_bioreg_dist.df, bioreg == 'Macaronesian')
 macaronesian$min_dst <- macaronesian$min_dst/1000
 
+# LM
 lm_macaronesian <- lm(hbtt_rc ~ min_dst, data = macaronesian)
 summary(lm_macaronesian)
 
@@ -298,21 +349,22 @@ polynomial.macaronesian <- lm(hbtt_rc ~ min_dst + I(min_dst^2), data = macarones
 summary(polynomial.macaronesian)
 
 # Calcolo GLM Poisson
-poisson.macaronesian <- glm(hbtt_rc ~ min_dst, family = poisson(link = "log"), data = macaronesian)
+poisson.macaronesian <- glm(hbtt_rc ~ min_dst, family = poisson(), data = macaronesian)
 summary(poisson.macaronesian)
 plot(poisson.macaronesian)
 
 Dsquared(poisson.macaronesian)
 
 # GAM
-gam.macaronesian <- gam(hbtt_rc ~ s(min_dst),  data = macaronesian, family = poisson())
+gam.macaronesian <- gam(hbtt_rc ~ s(min_dst, k = -1),  data = macaronesian, family = poisson())
 summary(gam.macaronesian)
+plot(gam.macaronesian)
 
-########## Importo 'Mediterranean'
-
+ ########## Importo 'Mediterranean'
 mediterranean <- filter(hr_bioreg_dist.df, bioreg == 'Mediterranean')
 mediterranean$min_dst <- mediterranean$min_dst/1000
 
+# LM
 lm_mediterranean <- lm(hbtt_rc ~ min_dst, data = mediterranean)
 summary(lm_mediterranean)
 
@@ -323,20 +375,22 @@ polynomial.mediterranean <- lm(hbtt_rc ~ min_dst + I(min_dst^2), data = mediterr
 summary(polynomial.mediterranean)
 
 # Calcolo GLM Poisson
-poisson.mediterranean <- glm(hbtt_rc ~ min_dst, family = poisson(link = "log"), data = mediterranean)
+poisson.mediterranean <- glm(hbtt_rc ~ min_dst, family = poisson(), data = mediterranean)
 summary(poisson.mediterranean)
 
 Dsquared(poisson.mediterranean)
 
 # GAM
-gam.mediterranean <- gam(hbtt_rc ~ s(min_dst),  data = mediterranean, family = poisson())
+gam.mediterranean <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = mediterranean, family = poisson())
 summary(gam.mediterranean)
+plot(gam.mediterranean)
 
 ########### 'Pannonian'
-
 pannonian <- filter(hr_bioreg_dist.df, bioreg == 'Pannonian')
 pannonian$min_dst <- pannonian$min_dst/1000
+plot(pannonian$hbtt_rc ~ pannonian$min_dst)
 
+# LM
 lm_pannonian <- lm(hbtt_rc ~ min_dst, data = pannonian)
 summary(lm_pannonian)
 
@@ -345,20 +399,21 @@ polynomial.pannonian <- lm(hbtt_rc ~ min_dst + I(min_dst^2), data = pannonia)
 summary(polynomial.pannonian)
 
 # Calcolo GLM Poisson
-poisson.pannonian <- glm(hbtt_rc ~ min_dst, family = poisson(link = "log"), data = pannonian)
+poisson.pannonian <- glm(hbtt_rc ~ min_dst, family = poisson(), data = pannonian)
 summary(poisson.pannonian)
 
 Dsquared(poisson.pannonian)
 
 # GAM
-gam.pannonian <- gam(hbtt_rc ~ s(min_dst),  data = pannonian, family = poisson())
+gam.pannonian <- gam(hbtt_rc ~ s(min_dst, k = 3),  data = pannonian, family = poisson())
 summary(gam.pannonian)
+plot(gam.pannonian)
 
 ########### Steppic
-
 steppic <- filter(hr_bioreg_dist.df, bioreg == 'Steppic')
 steppic$min_dst <- steppic$min_dst/1000
 
+# LM
 lm_steppic <- lm(hbtt_rc ~ min_dst, data = steppic)
 summary(lm_steppic)
 plot(lm_steppic)
@@ -370,21 +425,23 @@ polynomial.steppic <- lm(hbtt_rc ~ min_dst + I(min_dst^2), data = steppic)
 summary(polynomial.steppic)
 
 # Calcolo GLM Poisson
-poisson.steppic <- glm(hbtt_rc ~ min_dst, family = poisson(link = "log"), data = steppic)
+poisson.steppic <- glm(hbtt_rc ~ min_dst, family = poisson(), data = steppic)
 summary(poisson.steppic)
 
 Dsquared(poisson.steppic)
 
 # GAM
-gam.steppic <- gam(hbtt_rc ~ s(min_dst),  data = steppic, family = poisson())
+gam.steppic <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = steppic, family = poisson())
 summary(gam.steppic)
+plot(gam.pannonian)
+gam.check(gam.pannonian)
 
 ###############################################################
 
 # Regione Biogeografica come variabile qualitativa
 
 # LM
-lm_bioreg <- lm(hbtt_rc ~ factor(bioreg) + min_dst, data = hr_bioreg_dist.df)
+lm_bioreg <- lm(hbtt_rc ~ factor(bioreg) * min_dst, data = hr_bioreg_dist.df)
 summary(lm_bioreg)
 
 lm_bioreg$coefficients
@@ -395,4 +452,62 @@ summary(glm_bioreg)
 
 Dsquared(glm_bioreg)
 
+glm_bioreg$coefficients
 
+# GAM
+gam_bioreg <- gam(hbtt_rc ~ s(factor(bioreg) + min_dst), data = hr_bioreg_dist.df, family = poisson ())
+summary(gam_bioreg)
+gam_bioreg$coefficients
+
+
+##################################
+# Plot total dataset vs Alpine
+
+
+(plot.glm.total <- ggplot(hr_bioreg_dist.df, aes(x = min_dst, y = hbtt_rc)) + 
+    geom_point(col="red") +
+    geom_line(data= cbind(hr_bioreg_dist.df, pred = predict(poisson.total)), aes(y=pred), size = 1, col="black") +
+    xlab("Minimum Distance") + ylab("Habitat Richness")
+    labs(title = "Total"))
+
+
+(plot.glm.blacksea <- ggplot(black_sea.df, aes(x = min_dst, y = hbtt_rc)) + 
+    geom_point(col="green") +
+    xlab("Minimum Distance") + ylab("Habitat Richness")
+    geom_line(data= cbind(black_sea.df, pred.blacksea = predict(poisson.black_sea)), aes(y=pred.blacksea), size = 1, col="black") +
+    labs(title = "Black Sea"))
+
+grid.arrange(plot.glm.total, plot.glm.blacksea)
+dev.off()
+
+(plot.glm.alpine <- ggplot(alpine.df, aes(x = min_dst, y = hbtt_rc)) + 
+    geom_point(col="yellow") + xlim(0,350) +
+    geom_line(data= cbind(alpine.df, pred.alpine = predict(poisson.alpine)), aes(y=pred.alpine), size = 1, col="black") +
+    geom_smooth(method = glm) +
+    labs(x = "Minimum Distance (Km)", y = "Habitat Richness",
+         title = "Alpine"))
+
+#######################################################
+(plot.glm <- ggplot(hr_bioreg_dist.df, aes(x=min_dst, y=hbtt_rc, col = hbtt_rc)) +
+    geom_point() +
+    xlab("Minimum Distance") + ylab("Habitat Richness") +
+    geom_smooth(method = glm, col= "red" , fill = "red", alpha = 0.5) +
+    theme_classic() +
+    labs(title = "Total"))
+
+(plot.blacksea <- ggplot(black_sea.df, aes(x=min_dst, y=hbtt_rc, col = hbtt_rc)) +
+    geom_point() +
+    xlab("Minimum Distance") + ylab("Habitat Richness") +
+    geom_smooth(method = glm, col= "red" , fill = "red", alpha = 0.5) +
+    theme_classic() +
+    labs(title = "Black Sea"))
+
+grid.arrange(plot.glm, plot.blacksea)
+
+############
+# Table
+
+# Total
+stargazer(poisson.total, type = "text",
+          digits = 3,
+          digit.separator = "")
