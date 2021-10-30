@@ -172,6 +172,7 @@ glmm_alpine <- glmm(hbtt_rc ~ min_dst + (1|bioreg), data = alpine, family = bino
 
 atlantic <- filter(hr_bioreg_dist.df, bioreg == 'Atlantic')
 atlantic$min_dst <- atlantic$min_dst/1000
+atlantic.df <- as
 
 # LM
 lm_atlantic <- lm(hbtt_rc ~ min_dst, data = atlantic)
@@ -371,31 +372,93 @@ gam_bioreg$coefficients
 
 
 ##################################
-# Plot total dataset vs Alpine
+# GLM plot
 
+(plot.glm.total <- ggplot(hr_bioreg_dist.df, aes(x = min_dst, y = hbtt_rc, col = hbtt_rc)) + 
+    geom_point() +
+    geom_line(data= cbind(hr_bioreg_dist.df, pred = predict(poisson.total), type = "response"), aes(y=pred), size = 1, col="black") +
+    xlim(0,300) +
+    theme_classic() +
+    xlab("Minimum Distance") +
+    ylab("Habitat Richness") +
+    labs(title = "Habitat Richness ~ Minimum DIstance"))
 
-(plot.glm.total <- ggplot(hr_bioreg_dist.df, aes(x = min_dst, y = hbtt_rc)) + 
-    geom_point(col="red") +
-    geom_line(data= cbind(hr_bioreg_dist.df, pred = predict(poisson.total)), aes(y=pred), size = 1, col="black") +
-    xlab("Minimum Distance") + ylab("Habitat Richness")
-    labs(title = "Total"))
+(plot.glm.alpine <- ggplot(alpine.df, aes(x = min_dst, y = hbtt_rc, col = hbtt_rc)) + 
+  geom_point(col="green") +
+  geom_line(data= cbind(alpine.df, pred.alpine = predict(poisson.alpine), type = "response"), aes(y=pred.alpine), size = 1, col="black") +
+  xlim(0,300) + ylim(0,100) +
+  theme_classic() + 
+  xlab("Minimum Distance") +
+  ylab("Habitat Richness"))
+  
+(plot.glm.atlantic <- ggplot(atlantic.df, aes(x = min_dst, y = hbtt_rc, col = hbtt_rc)) + 
+    geom_point() +
+    geom_line(data= cbind(atlantic.df, pred.atlantic = predict(poisson.atlantic), type = "response"), aes(y=pred.atlantic), size = 1, col="black") +
+    xlim(0,300) + ylim(0,100) +
+    theme_classic()
+    xlab("Minimum Distance") +
+    ylab("Habitat Richness"))
 
+(plot.glm.blacksea <- ggplot(black_sea.df, aes(x = min_dst, y = hbtt_rc, col = hbtt_rc)) + 
+    geom_point() +
+    geom_line(data= cbind(black_sea.df, pred.blacksea = predict(poisson.black_sea), type = "response"), aes(y=pred.blacksea), size = 1, col="black") +
+    xlim(0,300) + ylim(0,100) +
+    theme_classic()
+    xlab("Minimum Distance") +
+    ylab("Habitat Richness"))
+    
+(plot.glm.boreal <- ggplot(boreal.df, aes(x = min_dst, y = hbtt_rc, col = hbtt_rc)) + 
+    geom_point() +
+    geom_line(data= cbind(boreal.df, pred.boreal = predict(poisson.boreal), type = "response"), aes(y=pred.boreal), size = 1, col="black") +
+    xlim(0,300) + ylim(0,100) +
+    theme_classic()
+    xlab("Minimum Distance") +
+    ylab("Habitat Richness"))
 
-(plot.glm.blacksea <- ggplot(black_sea.df, aes(x = min_dst, y = hbtt_rc)) + 
-    geom_point(col="green") +
-    xlab("Minimum Distance") + ylab("Habitat Richness")
-    geom_line(data= cbind(black_sea.df, pred.blacksea = predict(poisson.black_sea)), aes(y=pred.blacksea), size = 1, col="black") +
-    labs(title = "Black Sea"))
+(plot.glm.continental <- ggplot(continental.df, aes(x = min_dst, y = hbtt_rc, col = hbtt_rc)) + 
+    geom_point() +
+    geom_line(data= cbind(continental.df, pred.continental = predict(poisson.continental), type = "response"), aes(y=pred.continental), size = 1, col="black") +
+    xlim(0,300) + ylim(0,100) +
+    theme_classic()
+    xlab("Minimum Distance") +
+    ylab("Habitat Richness"))
+    
+(plot.glm.macaronesian <- ggplot(macaronesian.df, aes(x = min_dst, y = hbtt_rc, col = hbtt_rc)) + 
+    geom_point() +
+    geom_line(data= cbind(macaronesian.df, pred.macaronesian = predict(poisson.macaronesian), type = "response"), aes(y=pred.macaronesian), size = 1, col="black") +
+    xlim(0,300) + ylim(0,100) +
+    theme_classic()
+    xlab("Minimum Distance") +
+    ylab("Habitat Richness") +
+    labs(title = "Macaronesian"))
+  
+(plot.glm.mediterranean <- ggplot(mediterranean.df, aes(x = min_dst, y = hbtt_rc, col = hbtt_rc)) + 
+    geom_point() +
+    geom_line(data= cbind(mediterranean.df, pred.mediterranean = predict(poisson.mediterranean), type = "response"), aes(y=pred.mediterranean), size = 1, col="black") +
+    xlim(0,300) + ylim(0,100) +
+    theme_classic()
+    xlab("Minimum Distance") +
+    ylab("Habitat Richness"))
+ 
+(plot.glm.pannonian <- ggplot(pannonian.df, aes(x = min_dst, y = hbtt_rc, col = hbtt_rc)) + 
+    geom_point() +
+    geom_line(data= cbind(pannonian.df, pred.pannonian = predict(poisson.pannonian), type = "response"), aes(y=pred.pannonian), size = 1, col="black") +
+    xlim(0,300) + ylim(0,100) +
+    theme_classic()
+    xlab("Minimum Distance") +
+    ylab("Habitat Richness"))
+    
+(plot.glm.steppic <- ggplot(steppic.df, aes(x = min_dst, y = hbtt_rc, col = hbtt_rc)) + 
+    geom_point() +
+    geom_line(data= cbind(steppic.df, pred.steppic = predict(poisson.steppic), type = "response"), aes(y=pred.steppic), size = 1, col="black") +
+    xlim(0,300) + ylim(0,100) +
+    theme_classic()
+    xlab("Minimum Distance") +
+    ylab("Habitat Richness"))
 
-grid.arrange(plot.glm.total, plot.glm.blacksea)
+grid.arrange(plot.glm.total, plot.glm.alpine, plot.glm.atlantic, plot.glm.blacksea, plot.glm.boreal, plot.glm.continental, plot.glm.macaronesian, plot.glm.mediterranean,
+plot.glm.pannonian, plot.glm.steppic)
 dev.off()
-
-(plot.glm.alpine <- ggplot(alpine.df, aes(x = min_dst, y = hbtt_rc)) + 
-    geom_point(col="yellow") + xlim(0,350) +
-    geom_line(data= cbind(alpine.df, pred.alpine = predict(poisson.alpine)), aes(y=pred.alpine), size = 1, col="black") +
-    geom_smooth(method = glm) +
-    labs(x = "Minimum Distance (Km)", y = "Habitat Richness",
-         title = "Alpine"))
 
 #######################################################
 (plot.glm <- ggplot(hr_bioreg_dist.df, aes(x=min_dst, y=hbtt_rc, col = hbtt_rc)) +
