@@ -4,7 +4,6 @@
 
 # Working directory
 setwd("C:/R/")
-
 install.packages("rgdal")
 install.packages("vegan")
 install.packages("sf")
@@ -17,7 +16,9 @@ install.packages("glmmsr")
 install.packages("lme4")
 install.packages("ggplot2")
 install.packages("gridExtra")
-install.packages("stargazer")
+install.packages("patchwork")
+install.packages("ggpmisc")
+install.packages("tidyverse")
 
 # Libraries
 library(rgdal)
@@ -32,10 +33,28 @@ library(glmmsr)
 library(lme4)
 library(ggplot2)
 library(gridExtra)
-library(stargazer)
+library(patchwork)
+library(ggpmisc)
+library(tidyverse)
 
 ## Importo immagine Europe_habitat
 habitat <- readOGR("europe_habitats.shp")
+habitat_df_full <- as.data.frame(habitat)
+habitat_df_completo
+
+# Habitat richness
+habitat <- st_read("europe_habitats.shp")
+
+hr_bin <- habitat %>%
+  as.data.frame() %>%
+  select(-geometry, -EofOrigin, -NofOrigin) %>%
+  group_by(CellCode) %>%
+  summarise(across(.fns = sum)) %>%
+  remove_rownames() %>%
+  column_to_rownames("CellCode") %>%
+  {ifelse(. > 0, 1, 0)} %>%
+  rowSums()
+
 
 ## Import 'Regioni Biogeografiche'
 biogeo_region <- readOGR('BiogeoRegions2016.shp')
@@ -48,16 +67,32 @@ summary(biogeo_habitat)
 str(biogeo_habitat)
 
 # Converto lo .shp file in dataframe
-habitat_df <- as.data.frame(biogeo_habitat)
+habitat_df_completo <- as.data.frame(biogeo_habitat)
+habitat_df. <- as.data.frame(biogeo_habitat)
 head(habitat_df)
 names(habitat_df)
 str(habitat_df)
 
 # Sostituisco valori della tabella in 'presence/absence'
-presence_absence <- decostand(habitat_df[,4:ncol(habitat_df)], "pa")
+habitat1 <- st_read("Selezione.shp")
+
+hr_bin <- habitat1 %>%
+  as.data.frame() %>%
+  select(-geometry, -EofOrigin, -NofOrigin) %>%
+  group_by(CellCode) %>%
+  summarise(across(.fns = sum)) %>%
+  remove_rownames() %>%
+  column_to_rownames("CellCode") %>%
+  {ifelse(. > 0, 1, 0)} %>%
+  rowSums()
+
+
+habitat_df <- decostand(habitat_d.[,4:ncol(habitat_df)], "pa")
+
+presence_absence <- decostand(habitat_df[, -3], method = "pa")
 
 # Habitat richness
-habitat_richness <- rowSums(presence_absence)
+habitat_richness <- rowSums(presence_absence.)
 
 
 #####################################################################
