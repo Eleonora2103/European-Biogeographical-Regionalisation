@@ -1,0 +1,854 @@
+# R_code_EBR.r
+
+## Habitat diversity and biogeographical regionalisation
+
+# Working directory
+setwd("C:/R/")
+
+install.packages("rgdal")
+install.packages("vegan")
+install.packages("sf")
+install.packages("readxl")
+install.packages("dplyr")
+install.packages("stats")
+install.packages("modEvA")
+install.packages("mgcv")
+install.packages("glmmsr")
+install.packages("lme4")
+install.packages("ggplot2")    
+install.packages("tidyverse")
+install.packages("viridis") 
+install.packages("data.table") # Merge
+
+# Libraries
+library(rgdal)
+library(vegan)
+library(sf)
+library(readxl)
+library(dplyr)
+library(stats)
+library(modEvA)
+library(mgcv)
+library(glmmsr)
+library(lme4)
+library(ggplot2)
+library(tidyverse)
+library(viridis)
+library(data.table)
+
+## Import 'Regioni Biogeografiche'
+bioreg <- shapefile('BiogeoRegions2016.shp')
+str(biogeo_region)
+
+## Importo immagine Europe_habitat
+habitat <- readOGR("europe_habitats.shp")
+
+data.frame(colnames(habitat))
+
+
+# Importo lo shapefile filtrato
+# Ho creato un nuovo .shp file tramite QGis selezionando alcuni quadrati
+biogeo_habitat <- readOGR("Selezione.shp")
+biogeo_habitat
+summary(biogeo_habitat)
+str(biogeo_habitat)
+
+hr <- shapefile("hr_dist.shp")
+hr.df <- as.data.frame(hr)
+
+#####################################################################
+
+# Calcolo la distanza dal margine più vicino
+
+# Utilizzo lo Shapefile filtrato (Selezione.shp) e quello delle regioni Biogeografiche (BiogeoRegions2016.shp)
+sf_region <- st_as_sf(biogeo_region)
+sf_habitat <- st_as_sf(biogeo_habitat)
+sf_habitat
+
+# trasformo il layer del confine biogeografico da poligono a linea
+border <- st_cast(sf_region, "MULTILINESTRING")
+class(border)
+
+# calcolo la distanza tra il confine ed i punti della griglia selezionata
+dist <- st_distance(sf_habitat, border)
+str(dist)
+
+# creo il dataframe della distanza
+dist.df <- as.data.frame(dist)
+dim(dist.df)
+
+# calcolare la distanza minima dal confine per ogni cella
+min_dist <- apply(dist.df, 1, FUN=min)
+str(min_dist)
+
+head(min_dist)
+# [1]    0.000    0.000    0.000    0.000    0.000 3617.966
+
+# Aggiungo la colonna 'habitat_richness' al dataframe 
+habitat_df <- cbind(habitat_df, habitat_richness)
+names(habitat_df)
+
+# aggiungo la distanza dal confine più vicino al dataframe 'habitat_df'
+habitat_df <- cbind(habitat_df, min_dist)
+names(habitat_df)
+head(habitat_df)
+
+# Grafico distanza/habitat richness
+plot(habitat_df$min_dist, habitat_df$habitat_richness)
+
+#################################################################
+
+# Importo lo .shp file del dataset contenente distanze minime, regioni biogeografiche e habitat richness
+hr_bioreg_dist <- readOGR("hr_bioreg_dist.shp")
+summary(hr_bioreg_dist)
+str(hr_bioreg_dist)
+summary(hr_bioreg_dist$bioreg)
+
+# Habitat richness
+
+hr_bin <- habitat %>%
+  as.data.frame() %>%
+  select(-geometry, -EofOrigin, -NofOrigin) %>%
+  group_by(CellCode) %>%
+  summarise(across(.fns = sum)) %>%
+  remove_rownames() %>%
+  column_to_rownames("CellCode") %>%
+  {ifelse(. > 0, 1, 0)} %>%
+  rowSums()
+
+length(hr_bin)
+summary(hr_bin)
+q()brkVec = seq(1, 61, by = 2)
+length(brkVec)
+hist1 <- hist(hr_bin, breaks = brkVec, 
+              xaxp = c(1, 61, 30),
+              yaxp = c(0, 12000, 12),
+              xlab = "Habitat Richness",
+              main = NULL,)
+hist2 <- hist(hr_bin, xlab = "Habitat Richness",
+              main = NULL,
+              breaks = seq(0, 70, 5), xaxp=c(0, 65, 13 ))
+
+range(hr_bin)
+str(hr_bin)
+
+hr_bin_df <- as.data.frame(hr_bin)
+
+data.table::setDT(hr_bin_df, keep.rownames = T)
+
+colnames(hr_bin_df)[1] <- "CellCod"
+
+#Merge
+
+hr_bioreg_dist <- sp::merge( hr_bin_df, hr_bioreg_dist, by= 'CellCod')
+hr_bioreg_dist <- hr_bioreg_dist[,-3]
+
+hr.dist <- hr_bioreg_dist[, -3]
+
+
+# Converto a dataframe
+hr_bioreg_dist.df <- as.data.frame(hr_bioreg_dist)
+summary(hr_bioreg_dist.df)
+str(hr_bioreg_dist.df)
+
+#Conversione da metri a kilometri 
+hr_bioreg_dist.df$min_dst <- hr_bioreg_dist.df$min_dst/1000
+
+## Density plot
+
+# Richness
+install.packages("ggridges")
+library(ggridges)
+
+den <- ggplot(hr_bioreg_dist.df, aes(x = hr_bin, y = bioreg)) +
+  geom_density_ridges2(panel_scaling = FALSE)  +
+  xlab("Habitat Richness") +
+  ylab("Biogeographical Regions")
+
+den
+
+ggsave("den.richness.png", den, width = 5, height = 7, dpi = 300)
+
+
+# Distance
+den.dist <- ggplot(hr_bioreg_dist.df, aes(x = min_dst, y = bioreg)) +
+  geom_density_ridges2(panel_scaling = FALSE) +
+  xlab("Distance (Km)") +
+  ylab("Biogeographical Regions")
+
+den.dist
+
+ggsave("density.distance.png", den.dist, width = 7, height = 7, dpi = 300)
+
+################################################################
+## LM: habitat richness ~ distanza minima
+lm.total <- lm(hr_bin ~ (min_dst), data = hr_bioreg_dist.df)
+summary(lm.total)
+lm.total$coefficients
+
+#GLM
+poisson.total <- glm(hr_bin ~ min_dst, family = poisson(), data = hr_bioreg_dist.df)
+summary(poisson.total)
+total.dataframe <- as.data.frame(poisson.total)
+
+d2_Total <- Dsquared(poisson.total)
+table.tot <- as.data.frame((table(d2_Total)))
+plot(table.tot)
+
+
+# GAM
+gam.total <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = hr_bioreg_dist.df, family = poisson())
+summary(gam.total)
+plot(gam.total)
+
+#GLMM
+# habitat_richness ~ distanza_dal_margine + (1|bioreg)
+glmm.total <- lme4::glmer(hbtt_rc ~ min_dst + (1|bioreg), data = hr_bioreg_dist.df)
+
+# LMM
+lmm.total <- lme4::lmer(hbtt_rc ~ min_dst + (min_dst+1|bioreg), data = hr_bioreg_dist.df)
+
+########### 'Alpine'
+
+alpine <- filter(hr_bioreg_dist.df, bioreg == 'Alpine')
+alpine$min_dst <- alpine$min_dst/1000
+alpine.df <- as.data.frame(alpine)
+
+# LM
+lm_alpine <- lm(hr_bin ~ min_dst, data = alpine)
+summary(lm_alpine)
+
+
+# Calcolo GLM Poisson
+poisson.alpine <- glm(hr_bin ~ min_dst, family = poisson(), data = alpine.df)
+summary(poisson.alpine)
+
+Dsquared_Alpine <- Dsquared(poisson.alpine)
+table.alpine <- as.data.frame((table(Dsquared_Alpine)))
+    
+
+# GAM
+gam.alpine <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = alpine, family = poisson())
+summary(gam.alpine)
+plot(gam.alpine)
+
+# GLMM
+glmm_alpine <- glmm(hbtt_rc ~ min_dst + (1|bioreg), data = alpine, family = binomial, method = "Laplace")
+
+########### 'Atlantic'
+
+atlantic <- filter(hr_bioreg_dist.df, bioreg == 'Atlantic')
+atlantic$min_dst <- atlantic$min_dst/1000
+atlantic.df <- as.data.frame(atlantic)
+
+# LM
+lm_atlantic <- lm(hr_bin ~ min_dst, data = atlantic.df)
+summary(lm_atlantic)
+
+plot(atlantic$hbtt_rc ~ atlantic$min_dst)
+
+# Calcolo GLM Poisson
+poisson.atlantic <- glm(hr_bin ~ min_dst, family = poisson(), data = atlantic.df)
+summary(poisson.atlantic)
+plot(poisson.atlantic)
+
+Dsquared_Atlantic <- Dsquared(poisson.atlantic)
+table.atl <- as.data.frame((table(Dsquared_Atlantic)))
+atl.dsquared <- subset=(table.atl, select=-('Freq'))
+
+
+# GAM
+gam.atlantic <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = atlantic, family = poisson())
+summary(gam.atlantic)
+
+plot(gam.atlantic)
+
+########### 'Black Sea'
+
+black_sea <- filter(hr_bioreg_dist.df, bioreg == 'Black Sea')
+black_sea$min_dst <- black_sea$min_dst/1000
+black_sea.df <- as.data.frame(black_sea)
+
+# LM
+lm_black_sea <- lm(hr_bin ~ min_dst, data = black_sea.df)
+summary(lm_black_sea)
+
+blacklm <- ggplot(black_sea.df, aes(x=min_dst, y=hr_bin, col=hr_bin)) +
+  geom_point(alpha=0.4) +
+  geom_line(data= cbind(black_sea.df, pred.black=predict.lm(lm_black_sea, newdata = NULL, type = "response")), aes(pred.black), size=1)
+plot(blacklm)
+
+# Calcolo GLM Poisson
+poisson.black_sea <- glm(hr_bin ~ min_dst, family = poisson(), data = black_sea.df)
+summary(poisson.black_sea)
+plot(poisson.black_sea)
+
+Dsquared_Black_Sea <- Dsquared(poisson.black_sea)
+table.blacksea <- as.data.frame((table(Dsquared_Black_Sea)))
+
+# GAM
+gam.black_sea <- gam(hbtt_rc ~ s(min_dst, k = 3),  data = black_sea, family = poisson())
+summary(gam.black_sea)
+plot(gam.black_sea)
+
+########## 'Boreal'
+boreal <- filter(hr_bioreg_dist.df, bioreg == 'Boreal')
+boreal$min_dst <- boreal$min_dst/1000
+boreal.df <- as.data.frame(boreal)
+
+# LM
+lm_boreal <- lm(hr_bin ~ min_dst, data = boreal.df)
+summary(lm_boreal)
+
+plot(boreal$hbtt_rc ~ boreal$min_dst)
+
+# Calcolo GLM Poisson
+poisson.boreal <- glm(hr_bin ~ min_dst, family = poisson(), data = boreal.df)
+summary(poisson.boreal)
+plot(poisson.boreal)
+
+Dsquared_Boreal <- Dsquared(poisson.boreal)
+table.bor <- as.data.frame((table(Dsquared_Boreal)))
+
+
+# GAM
+gam.boreal <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = boreal, family = poisson())
+summary(gam.boreal)
+plot(gam.boreal)
+
+##########  'Continental'
+continental <- filter(hr_bioreg_dist.df, bioreg == 'Continental')
+continental$min_dst <- continental$min_dst/1000
+continental.df <- as.data.frame(continental)
+
+# LM
+lm_continental <- lm(hr_bin ~ min_dst, data = continental.df)
+summary(lm_continental)
+
+plot(continental$hbtt_rc ~ continental$min_dst)
+
+# Calcolo GLM Poisson
+poisson.continental <- glm(hr_bin ~ min_dst, family = poisson(), data = continental.df)
+summary(poisson.continental)
+plot(poisson.continental)
+
+Dsquared_Continental <- Dsquared(poisson.continental)
+table.cont <- as.data.frame((table(Dsquared_Continental)))
+
+# GAM
+gam.continental <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = continental, family = poisson())
+summary(gam.continental)
+plot(gam.continental)
+
+########## Importo 'Macaronesian'
+macaronesian <- filter(hr_bioreg_dist.df, bioreg == 'Macaronesian')
+macaronesian$min_dst <- macaronesian$min_dst/1000
+macaronesian.df <- as.data.frame(macaronesian)
+
+# LM
+lm_macaronesian <- lm(hr_bin ~ min_dst, data = macaronesian.df)
+summary(lm_macaronesian)
+
+plot(macaronesian$hbtt_rc ~ macaronesian$min_dst)
+
+# Calcolo GLM Poisson
+poisson.macaronesian <- glm(hr_bin ~ min_dst, family = poisson(), data = macaronesian.df)
+summary(poisson.macaronesian)
+plot(poisson.macaronesian)
+
+Dsquared_Macaronesian <- Dsquared(poisson.macaronesian)
+table.mac <- as.data.frame((table(Dsquared_Macaronesian)))
+
+# GAM
+gam.macaronesian <- gam(hbtt_rc ~ s(min_dst, k = -1),  data = macaronesian, family = poisson())
+summary(gam.macaronesian)
+plot(gam.macaronesian)
+
+ ########## Importo 'Mediterranean'
+mediterranean <- filter(hr_bioreg_dist.df, bioreg == 'Mediterranean')
+mediterranean$min_dst <- mediterranean$min_dst/1000
+mediterranean.df <- as.data.frame(mediterranean)
+
+# LM
+lm_mediterranean <- lm(hr_bin ~ min_dst, data = mediterranean.df)
+summary(lm_mediterranean)
+
+plot(mediterranean$hbtt_rc ~ mediterranean$min_dst)
+
+# Calcolo GLM Poisson
+poisson.mediterranean <- glm(hr_bin ~ min_dst, family = poisson(), data = mediterranean.df)
+summary(poisson.mediterranean)
+
+Dsquared_Mediterranean <- Dsquared(poisson.mediterranean)
+table.med <- as.data.frame((table(Dsquared_Mediterranean)))
+
+# GAM
+gam.mediterranean <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = mediterranean, family = poisson())
+summary(gam.mediterranean)
+plot(gam.mediterranean)
+
+########### 'Pannonian'
+pannonian <- filter(hr_bioreg_dist.df, bioreg == 'Pannonian')
+pannonian$min_dst <- pannonian$min_dst/1000
+pannonian.df <- as.data.frame(pannonian)
+
+# LM
+lm_pannonian <- lm(hr_bin ~ min_dst, data = pannonian)
+summary(lm_pannonian)
+
+# Calcolo GLM Poisson
+poisson.pannonian <- glm(hr_bin ~ min_dst, family = poisson(), data = pannonian.df)
+summary(poisson.pannonian)
+
+Dsquared_Pannonian <- Dsquared(poisson.pannonian)
+table.pan <- as.data.frame((table(Dsquared_Pannonian)))
+
+# GAM
+gam.pannonian <- gam(hbtt_rc ~ s(min_dst, k = 3),  data = pannonian, family = poisson())
+summary(gam.pannonian)
+plot(gam.pannonian)
+
+########### Steppic
+steppic <- filter(hr_bioreg_dist.df, bioreg == 'Steppic')
+steppic$min_dst <- steppic$min_dst/1000
+steppic.df <- as.data.frame(steppic)
+
+# LM
+lm_steppic <- lm(hr_bin ~ min_dst, data = steppic)
+summary(lm_steppic)
+plot(lm_steppic)
+
+plot(steppic$hbtt_rc, steppic$min_dst)
+
+# Calcolo GLM Poisson
+poisson.steppic <- glm(hr_bin ~ min_dst, family = poisson(), data = steppic.df)
+summary(poisson.steppic)
+
+Dsquared_Steppic <- Dsquared(poisson.steppic)
+table.step <- as.data.frame((table(Dsquared_Steppic)))
+
+
+# GAM
+gam.steppic <- gam(hbtt_rc ~ s(min_dst, k = 4),  data = steppic, family = poisson())
+summary(gam.steppic)
+plot(gam.pannonian)
+gam.check(gam.pannonian)
+
+###############################################################
+
+# Regione Biogeografica come variabile qualitativa
+
+# LM
+lm_bioreg <- lm(hbtt_rc ~ factor(bioreg) * min_dst, data = hr_bioreg_dist.df)
+summary(lm_bioreg)
+
+lm_bioreg$coefficients
+
+# GLM
+glm_bioreg <- glm(hbtt_rc ~ factor(bioreg) + min_dst, data = hr_bioreg_dist.df, family = poisson())
+summary(glm_bioreg)
+
+Dsquared(glm_bioreg)
+
+glm_bioreg$coefficients
+
+# GAM
+gam_bioreg <- gam(hbtt_rc ~ s(factor(bioreg) + min_dst), data = hr_bioreg_dist.df, family = poisson ())
+summary(gam_bioreg)
+gam_bioreg$coefficients
+
+
+#########################################################################
+install.packages("biscale") # Bivariate map
+install.packages("raster")
+install.packages("cowplot")
+library(biscale)
+library(raster)
+library(cowplot)
+
+hr <- shapefile("hr_dist.shp")
+hr <- st_as_sf(hr)
+hr <- transform(hr, hr_bin =as.numeric(hr_bin))
+
+bioreg_fort <- st_as_sf(bioreg) %>% fortify()
+
+data <- bi_class(hr, x= min_dst, y = hr_bin, dim = 3, style ="quantile")
+
+biv_map <- ggplot() +
+  geom_sf(data = data, mapping = aes(fill = bi_class), color = "transparent", size = 0.1, show.legend = FALSE) +
+  bi_scale_fill(pal = "DkBlue", dim = 3) +
+  geom_sf(data=bioreg_fort, fill = "transparent", lwd=0.2) +
+  coord_sf() +
+  theme_bw() +
+  scale_y_continuous(expand = c(0,0)) + scale_x_continuous(expand = c(0,0)) +
+  bi_theme()
+
+legend <- bi_legend(pal = "DkBlue",
+                    dim = 3,
+                    xlab = "Distance (Km)",
+                    ylab = "Habitat Richness",
+                    size = 8)
+
+finalPlot <- ggdraw() +
+  draw_plot(biv_map, 0, 0, 1, 1) +
+  draw_plot(legend, 0.2, .65, 0.2, 0.2)
+
+finalPlot
+
+ggsave("bivmap.png", finalPlot, width = 7, height = 7, dpi = 300)
+
+# Biogeographical Regions
+bioreg_fort %>%
+  filter(code %in% c("Alpine", "Atlantic", "BlackSea", "Boreal", 
+                     "Continental", "Macaronesia", "Mediterranean", "Pannonian", "Steppic"))
+plot.bioreg <- ggplot() +
+  geom_sf(data=bioreg_fort, aes(col=code), fill = "code") +
+  theme_bw()
+plot.bioreg
+
+install.packages("ggpubr")
+library(ggpubr)
+library(ggplot2)
+# Plotting LM
+
+fitlm = lm(hr_bin ~ min_dst, data=hr_bioreg_dist.df)
+
+hr_bioreg_dist.df$predlm = predict(fitlm)
+
+plot.tot <- ggplot(hr_bioreg_dist.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkgreen") +
+  geom_line(aes(y=predlm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "R²: 0.021") +
+  theme_classic() +
+  labs(title="Total") + 
+  theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# ALpine
+
+fitlm.al = lm(hr_bin ~ min_dst, data = alpine.df)
+
+alpine.df$predlm = predict(fitlm.al)
+
+plot.al <- ggplot(alpine.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkgreen") +
+  geom_line(aes(y=predlm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "R²: 0.026") +
+  theme_classic() +
+  labs(title="Alpine") + theme(plot.title=element_text( hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Atlantic
+
+fitlm.at = lm(hr_bin ~ min_dst, data = atlantic.df)
+
+atlantic.df$predlm = predict(fitlm.at)
+
+plot.at <- ggplot(atlantic.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkgreen") +
+  geom_line(aes(y=predlm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "R²: 0.114") +
+  theme_classic() +
+  labs(title="Atlantic") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Black Sea
+fitlm.b = lm(hr_bin ~ min_dst, data = black_sea.df)
+
+black_sea.df$predlm = predict(fitlm.b)
+
+plot.b <- ggplot(black_sea.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkgreen") +
+  geom_line(aes(y=predlm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "R²: 0.11") +
+  theme_classic() +
+  labs(title="Black Sea") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+#Boreal
+fitlm.bo = lm(hr_bin ~ min_dst, data = boreal.df)
+
+boreal.df$predlm = predict(fitlm.bo)
+
+plot.bo <- ggplot(boreal.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkgreen") +
+  geom_line(aes(y=predlm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "R²: 0.122") +
+  theme_classic() +
+  labs(title="Boreal") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Continental
+fitlm.c = lm(hr_bin ~ min_dst, data = continental.df)
+
+continental.df$predlm = predict(fitlm.c)
+
+plot.c <- ggplot(continental.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkgreen") +
+  geom_line(aes(y=predlm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "R²: 0.01") +
+  theme_classic() +
+  labs(title="Continental") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Macaronesian
+fitlm.ma = lm(hr_bin ~ min_dst, data = macaronesian.df)
+
+macaronesian.df$predlm = predict(fitlm.ma)
+
+plot.ma <- ggplot(macaronesian.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkgreen") +
+  geom_line(aes(y=predlm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "R²: 0.002") +
+  theme_classic() +
+  labs(title="Macaronesian") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Mediterranean
+fitlm.me = lm(hr_bin ~ min_dst, data = mediterranean.df)
+
+mediterranean.df$predlm = predict(fitlm.me)
+
+plot.me <- ggplot(mediterranean.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkgreen") +
+  geom_line(aes(y=predlm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "R²: 0.018") +
+  theme_classic() +
+  labs(title="Mediterranean") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+#Pannonnian
+fitlm.p = lm(hr_bin ~ min_dst, data = pannonian.df)
+
+pannonian.df$predlm = predict(fitlm.p)
+
+plot.p <- ggplot(pannonian.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkgreen") +
+  geom_line(aes(y=predlm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "R²: 0.022") +
+  theme_classic() +
+  labs(title="Pannonian") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Steppic
+fitlm.s = lm(hr_bin ~ min_dst, data = steppic.df)
+
+steppic.df$predlm = predict(fitlm.s)
+
+plot.s <- ggplot(steppic.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkgreen") +
+  geom_line(aes(y=predlm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "R²: 0.075") +
+  theme_classic() +
+  labs(title="Steppic") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+map <- ggarrange(plot.tot, plot.al, plot.at, plot.b, plot.bo,
+          plot.c, plot.ma, plot.me, plot.p, plot.s,
+          ncol = 3, nrow= 4)
+final.lm <- annotate_figure(map, 
+                bottom = text_grob("Distance (Km)"),
+                left = text_grob("Habitat Richness", rot = 90))
+                
+final.lm
+
+map123 <- ggarrange(plot.tot, plot.al, plot.at,
+                    nrow = 1)
+map123
+
+
+ (plot.tot | plot.al | plot.at | plot.b | plot.bo) /
+  (plot.c | plot.ma | plot.me | plot.p | plot.s)
+
+(plot.total | .alpine | glm.atlantic) /
+  (glm.blacksea | glm.boreal | glm.continental) /
+  (glm.macaronesian | glm.mediterranean | glm.pannonian) /
+  glm.steppic
+
+
+ggsave("lm.png", final.lm, width = 8, height = 8, dpi = 300)
+
+
+# GLM
+fitglm = glm(hr_bin ~ min_dst, family = poisson(), data=hr_bioreg_dist.df)
+
+hr_bioreg_dist.df$predglm = predict(fitglm, type="response")
+
+glm.tot <- ggplot(hr_bioreg_dist.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkblue") +
+  geom_line(aes(y=predglm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "D²: 0.021") +
+    theme_classic() +
+  labs(title="Total") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+plot(glm.tot)  
+
+# Alpine
+fitglm.al = glm(hr_bin ~ min_dst, family = poisson(), data=alpine.df)
+
+alpine.df$predglm = predict(fitglm.al, type ="response")
+
+glm.al <- ggplot(alpine.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkblue") +
+  geom_line(aes(y=predglm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "D²: 0.002") +
+  theme_classic() +
+  labs(title="Alpine") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+#Atlantic
+fitglm.at = glm(hr_bin ~ min_dst, family = poisson(), data=atlantic.df)
+
+atlantic.df$predglm = predict(fitglm.at, type ="response")
+
+glm.at <- ggplot(atlantic.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkblue") +
+  geom_line(aes(y=predglm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "D²: 0.117") +
+  theme_classic() +
+  labs(title="Atlantic") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+
+# Black Sea
+fitglm.b = glm(hr_bin ~ min_dst, family = poisson(), data=black_sea.df)
+
+black_sea.df$predglm = predict(fitglm.b, type ="response")
+
+glm.b <- ggplot(black_sea.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkblue") +
+  geom_line(aes(y=predglm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "D²: 0.081") +
+  theme_classic() +
+  labs(title="Black Sea") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Boreal
+fitglm.bo = glm(hr_bin ~ min_dst, family = poisson(), data=boreal.df)
+
+boreal.df$predglm = predict(fitglm.bo, type = "response")
+
+glm.bo <- ggplot(boreal.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkblue") +
+  geom_line(aes(y=predglm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "D²: 0.125") +
+  theme_classic() +
+  labs(title="Boreal") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Continental
+fitglm.c = glm(hr_bin ~ min_dst, family = poisson(),  data=continental.df)
+
+continental.df$predglm = predict(fitglm.c, type = "response")
+
+glm.c <- ggplot(continental.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkblue") +
+  geom_line(aes(y=predglm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "D²: 0.01") +
+  theme_classic() +
+  labs(title="Continental") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+glm.c
+# Macaronesian
+fitglm.ma = glm(hr_bin ~ min_dst, family = poisson(), data=macaronesian.df)
+
+macaronesian.df$predglm = predict(fitglm.ma, type ="response")
+
+glm.ma <- ggplot(macaronesian.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkblue") +
+  geom_line(aes(y=predglm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "D²: 0.002") +
+  theme_classic() +
+  labs(title="Macaronesian") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Mediterranean
+fitglm.me = glm(hr_bin ~ min_dst, family = poisson(), data=mediterranean.df)
+
+mediterranean.df$predglm = predict(fitglm.me, type ="response")
+
+glm.me <- ggplot(mediterranean.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkblue") +
+  geom_line(aes(y=predglm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "D²: 0.017") +
+  theme_classic() +
+  labs(title="Mediterranean") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Pannonian
+fitglm.p = glm(hr_bin ~ min_dst, family = poisson(), data=pannonian.df)
+
+pannonian.df$predglm = predict(fitglm.p, type ="response")
+
+glm.p <- ggplot(pannonian.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkblue") +
+  geom_line(aes(y=predglm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "D²: 0.021") +
+  theme_classic() +
+  labs(title="Pannonian") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Steppic
+fitglm.s = glm(hr_bin ~ min_dst, family = poisson(), data=steppic.df)
+
+steppic.df$predglm = predict(fitglm.s, type ="response")
+
+glm.s <- ggplot(hr_bioreg_dist.df, aes(x=min_dst, y=hr_bin)) +
+  geom_point(alpha=0.3, col="darkblue") +
+  geom_line(aes(y=predglm), size=1, col="red") +
+  xlim(0,350) + ylim(0,70) +
+  annotate("text", x = 290, y = 65, label = "D²: 0.088") +
+  theme_classic() +
+  labs(title="Steppic") + theme(plot.title=element_text(hjust = 0.5)) +
+  theme(axis.title.x  = element_blank(),
+        axis.title.y = element_blank())
+
+# Final plot
+map1 <- ggarrange(glm.tot, glm.al, glm.at, glm.b, glm.bo,
+                 glm.c, glm.ma, glm.me, glm.p, glm.s,
+                 ncol = 3, nrow= 4)
+Finalmap <- annotate_figure(map1, 
+                bottom = text_grob("Distance (Km)"),
+                left = text_grob("Habitat Richness", rot = 90))
+Finalmap
+
+ggsave("glm.png", Finalmap, width = 8, height = 8, dpi = 300)
